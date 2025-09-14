@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Spotify Data</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="favicon.png">
+</head>
+<body>
+
+    <main class="container">
+        <div class="header-controls">
+            <div class="time-range-selector">
+                <label for="time-range-select">Show me my data from:</label>
+                <div class="custom-select-wrapper">
+                    <select id="time-range-select">
+                        <option value="long_term">All Time</option>
+                        <option value="medium_term">Last 6 Months</option>
+                        <option value="short_term">Last 4 Weeks</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="token-input-container">
+                <button id="token-input-btn" class="token-button">Set API Key</button>
+                <div class="token-form">
+                    <input type="text" id="token-input" placeholder="Obtain from developer.spotify.com">
+                    <button id="token-submit-btn" class="submit-button">Save</button>
+                </div>
+            </div>
+            <button id="info-btn" class="info-button">i</button>
+            <div id="disclaimer" class="disclaimer-note-popup">
+                <p>Note: This is a local-only tool. Your data and API key are not being uploaded or saved anywhere.</p>
+            </div>
+        </div>
+
+        <section>
+            <h1>My Top 5 Tracks</h1>
+            <div id="top-tracks-container" class="tracks-list">
+                <p>Loading your top tracks...</p>
+            </div>
+        </section>
+
+        <section class="section-artists">
+            <h1>My Top 5 Artists</h1>
+            <div id="top-artists-container" class="artists-list">
+                <p>Loading your top artists...</p>
+            </div>
+        </section>
+    </main>
+    
+    <div id="track-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">×</span>
+            <img id="modal-album-art" src="" alt="Album cover">
+            <h2 id="modal-track-name"></h2>
+            <p><strong>Artist(s):</strong> <span id="modal-artist-name"></span></p>
+            <p><strong>Album:</strong> <span id="modal-album-name"></span></p>
+            <p><strong>Popularity:</strong> <span id="modal-popularity"></span>/100</p>
+            <p><strong>Duration:</strong> <span id="modal-duration"></span></p>
+            <p class="warning">
+                Note: The Spotify API does not provide a direct play count.
+                The 'Popularity' score is based on the track's recent streams.
+            </p>
+        </div>
+    </div>
+
+    <script src="code.js"></script>
+</body>
+</html>
