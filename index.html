@@ -7,12 +7,15 @@
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="favicon.png">
 </head>
 <body>
 
     <main class="container">
+        <!-- This button exists to test the API - Spotify updates their API sometimes so some methods may not work as expected anymore -->
+        <!-- <button id="test-api-btn" class="submit-button" style="background-color: #ef4444; margin-left: 8px;">Run Test</button> -->
+
         <div class="header-controls">
             <div class="time-range-selector">
                 <label for="time-range-select">Show me my data from:</label>
@@ -25,47 +28,72 @@
                 </div>
             </div>
             
-            <div class="token-input-container">
-                <button id="token-input-btn" class="token-button">Set API Key</button>
-                <div class="token-form">
-                    <input type="text" id="token-input" placeholder="Obtain from developer.spotify.com">
-                    <button id="token-submit-btn" class="submit-button">Save</button>
+            <div class="header-actions">
+                <div class="token-input-container">
+                    <button id="token-input-btn" class="token-button">Set API Key</button>
+                    <div class="token-form">
+                        <a href="https://developer.spotify.com/dashboard" target="_blank" class="dev-link-btn" title="Open Spotify Developer Dashboard">Get Key</a>
+                        <input type="text" id="token-input" placeholder="Paste your API key here">
+                        <button id="token-submit-btn" class="submit-button">Save</button>
+                    </div>
                 </div>
-            </div>
-            <button id="info-btn" class="info-button">i</button>
-            <div id="disclaimer" class="disclaimer-note-popup">
-                <p>Note: This is a local-only tool. Your data and API key are not being uploaded or saved anywhere.</p>
+                <button id="info-btn" class="info-button">?</button>
+                <div id="disclaimer" class="disclaimer-note-popup">
+                    <p><strong>Note:</strong> This is a local-only tool. Your data and API key are not being uploaded or saved anywhere.</p>
+                </div>
             </div>
         </div>
 
-        <section>
-            <h1>My Top 5 Tracks</h1>
-            <div id="top-tracks-container" class="tracks-list">
-                <p>Loading your top tracks...</p>
-            </div>
-        </section>
+        <!-- NEW: Grid wrapper for side-by-side layout -->
+        <div class="dashboard-grid">
+            <section class="data-section">
+                <h1>My Top Tracks</h1>
+                <div id="top-tracks-container" class="tracks-list">
+                    <p class="loading-text">Loading your top tracks...</p>
+                </div>
+            </section>
 
-        <section class="section-artists">
-            <h1>My Top 5 Artists</h1>
-            <div id="top-artists-container" class="artists-list">
-                <p>Loading your top artists...</p>
-            </div>
-        </section>
+            <section class="data-section">
+                <h1>My Top Artists</h1>
+                <div id="top-artists-container" class="artists-list">
+                    <p class="loading-text">Loading your top artists...</p>
+                </div>
+            </section>
+        </div>
     </main>
     
     <div id="track-modal" class="modal">
         <div class="modal-content">
-            <span class="close-button">×</span>
+            <span class="close-button" id="close-track-modal">×</span>
             <img id="modal-album-art" src="" alt="Album cover">
-            <h2 id="modal-track-name"></h2>
-            <p><strong>Artist(s):</strong> <span id="modal-artist-name"></span></p>
-            <p><strong>Album:</strong> <span id="modal-album-name"></span></p>
-            <p><strong>Popularity:</strong> <span id="modal-popularity"></span>/100</p>
-            <p><strong>Duration:</strong> <span id="modal-duration"></span></p>
-            <p class="warning">
-                Note: The Spotify API does not provide a direct play count.
-                The 'Popularity' score is based on the track's recent streams.
-            </p>
+            <div class="modal-text-content">
+                <h2>
+                    <span id="modal-track-name"></span>
+                    <span id="modal-explicit" class="explicit-badge">E</span>
+                </h2>
+                <p><strong>Artist(s):</strong> <span id="modal-artist-name"></span></p>
+                <p><strong>Album:</strong> <span id="modal-album-name" class="clickable-link" title="View Album Details"></span></p>
+                <p><strong>Release Date:</strong> <span id="modal-release-date"></span></p>
+                <p><strong>Duration:</strong> <span id="modal-duration"></span></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="album-modal" class="modal">
+        <div class="modal-content">
+            <!-- NEW: Back Button -->
+            <span class="back-button" id="back-to-track-btn">← Back</span>
+            <span class="close-button" id="close-album-modal">×</span>
+            
+            <img id="modal-album-only-art" src="" alt="Album cover">
+            <div class="modal-text-content">
+                <h2 id="modal-album-only-name"></h2>
+                <p><strong>Artist(s):</strong> <span id="modal-album-only-artist"></span></p>
+                <p><strong>Type:</strong> <span id="modal-album-only-type" class="type-badge"></span></p>
+                <p><strong>Total Tracks:</strong> <span id="modal-album-only-tracks"></span></p>
+                <p><strong>Release Date:</strong> <span id="modal-album-only-release-date"></span></p>
+                <a id="modal-album-only-uri" href="#" class="spotify-link-btn">Open Album in Spotify</a>
+            </div>
         </div>
     </div>
 

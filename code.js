@@ -1,14 +1,43 @@
 //===================================================================
+// Enable this section to test the Spotify API endpoints independently of the main app functionality.
+//===================================================================
+
+// document.getElementById('test-api-btn').addEventListener('click', () => {
+//     if (!token || token === 'YOUR_SPOTIFY_ACCESS_TOKEN') {
+//         console.warn("⚠️ Please set and save your API key first!");
+//         return;
+//     }
+//     console.log("Button clicked! Triggering diagnostics...");
+//     // Uses a hardcoded track ID to test the endpoints independently
+//     runApiDiagnostics(token, '4cOdK2wGLETKBW3PvgPWqT'); 
+// });
+
+
+
+//===================================================================
 // 1. Configuration & API Interaction
 //===================================================================
 
 let token = 'YOUR_SPOTIFY_ACCESS_TOKEN';
 const BASE_API_URL = 'https://api.spotify.com/v1/';
 
+const dataCache = {
+    short_term: null,
+    medium_term: null,
+    long_term: null
+};
+
 async function fetchWebApi(endpoint) {
     const res = await fetch(`${BASE_API_URL}${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` },
     });
+    
+    // Check for rate limiting first
+    if (res.status === 429) {
+        const retryAfter = res.headers.get('Retry-After') || 5; 
+        throw new Error(`Rate limited by Spotify. Please wait ${retryAfter} seconds before trying again.`);
+    }
+    
     if (!res.ok) {
         throw new Error(`API call to ${endpoint} failed with status: ${res.status}`);
     }
@@ -51,8 +80,18 @@ async function displayAllData(time_range) {
     artistsContainer.innerHTML = '<p>Loading your top artists...</p>';
 
     try {
-        const topTracks = await getTopTracks(time_range);
-        const topArtists = await getTopArtists(time_range);
+        let topTracks, topArtists;
+
+        // Check if we already have this time range saved in memory
+        if (dataCache[time_range]) {
+            topTracks = dataCache[time_range].tracks;
+            topArtists = dataCache[time_range].artists;
+        } else {
+            // If not, fetch it from Spotify and save it to the cache
+            topTracks = await getTopTracks(time_range);
+            topArtists = await getTopArtists(time_range);
+            dataCache[time_range] = { tracks: topTracks, artists: topArtists };
+        }
 
         if (topTracks.length === 0) {
             tracksContainer.innerHTML = '<p>No top tracks found for this time range.</p>';
@@ -93,7 +132,7 @@ async function displayAllData(time_range) {
 
     } catch (error) {
         console.error("Error fetching data:", error);
-        tracksContainer.innerHTML = '<p>There was an error loading your data. Your API key may be invalid or expired.</p>';
+        tracksContainer.innerHTML = `<p style="color: #ef4444; font-weight: 500;">⚠️ ${error.message}</p>`;
         artistsContainer.innerHTML = '';
     }
 }
@@ -103,23 +142,60 @@ function showTrackDetails(trackId, topTracks) {
     if (!track) return;
 
     const modal = document.getElementById('track-modal');
-    const modalAlbumArt = document.getElementById('modal-album-art');
-    const modalTrackName = document.getElementById('modal-track-name');
-    const modalArtistName = document.getElementById('modal-artist-name');
-    const modalAlbumName = document.getElementById('modal-album-name');
-    const modalPopularity = document.getElementById('modal-popularity');
-    const modalDuration = document.getElementById('modal-duration');
+    
+    // Track Info
+    document.getElementById('modal-album-art').src = track.album.images[0].url;
+    document.getElementById('modal-track-name').textContent = track.name;
+    document.getElementById('modal-artist-name').textContent = track.artists.map(artist => artist.name).join(', ');
+    document.getElementById('modal-release-date').textContent = formatDate(track.album.release_date);
+    document.getElementById('modal-duration').textContent = msToMinutesAndSeconds(track.duration_ms);
+    
+    // Explicit Badge Toggle
+    const explicitBadge = document.getElementById('modal-explicit');
+    explicitBadge.style.display = track.explicit ? 'inline-block' : 'none';
 
-    modalAlbumArt.src = track.album.images[0].url;
-    modalAlbumArt.alt = `${track.album.name} album cover`;
-
-    modalTrackName.textContent = track.name;
-    modalArtistName.textContent = track.artists.map(artist => artist.name).join(', ');
-    modalAlbumName.textContent = track.album.name;
-    modalPopularity.textContent = track.popularity;
-    modalDuration.textContent = msToMinutesAndSeconds(track.duration_ms);
+    // Clickable Album Name
+    const albumNameEl = document.getElementById('modal-album-name');
+    albumNameEl.textContent = track.album.name;
+    albumNameEl.onclick = () => showAlbumDetails(track.album, track.artists);
 
     modal.style.display = "block";
+}
+
+function showAlbumDetails(album, trackArtists) {
+    // Hide the track modal before opening the album modal
+    document.getElementById('track-modal').style.display = "none";
+    
+    const modal = document.getElementById('album-modal');
+    
+    document.getElementById('modal-album-only-art').src = album.images[0].url;
+    document.getElementById('modal-album-only-name').textContent = album.name;
+    document.getElementById('modal-album-only-type').textContent = album.album_type;
+    document.getElementById('modal-album-only-tracks').textContent = album.total_tracks;
+    document.getElementById('modal-album-only-release-date').textContent = formatDate(album.release_date);
+    
+    // The album object inside a track payload usually has its own artists array
+    const artists = album.artists ? album.artists.map(a => a.name).join(', ') : trackArtists.map(a => a.name).join(', ');
+    document.getElementById('modal-album-only-artist').textContent = artists;
+    
+    // Set up the URI link (Clicking this will try to open the Spotify Desktop App)
+    const uriEl = document.getElementById('modal-album-only-uri');
+    uriEl.href = album.uri; 
+
+    modal.style.display = "block";
+}
+
+function formatDate(dateString) {
+    if (!dateString) return 'Unknown Date';
+    
+    // Split the date to handle Spotify's varying precisions safely
+    const parts = dateString.split('-');
+    const year = parts[0];
+    const month = parts[1] ? parseInt(parts[1], 10) - 1 : 0; // JS months are 0-indexed
+    const day = parts[2] ? parseInt(parts[2], 10) : 1;
+    
+    const date = new Date(year, month, day);
+    return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 }
 
 //===================================================================
@@ -127,14 +203,29 @@ function showTrackDetails(trackId, topTracks) {
 //===================================================================
 
 // --- Modal Listeners ---
-document.querySelector('.close-button').addEventListener('click', () => {
+document.getElementById('close-track-modal').addEventListener('click', () => {
     document.getElementById('track-modal').style.display = "none";
 });
 
+document.getElementById('close-album-modal').addEventListener('click', () => {
+    document.getElementById('album-modal').style.display = "none";
+});
+
+// --- Back Button Listener ---
+document.getElementById('back-to-track-btn').addEventListener('click', () => {
+    document.getElementById('album-modal').style.display = "none";
+    document.getElementById('track-modal').style.display = "block";
+});
+
 window.addEventListener('click', (event) => {
-    const modal = document.getElementById('track-modal');
-    if (event.target === modal) {
-        modal.style.display = "none";
+    const trackModal = document.getElementById('track-modal');
+    const albumModal = document.getElementById('album-modal');
+    
+    // Close whichever modal is currently being clicked outside of
+    if (event.target === trackModal) {
+        trackModal.style.display = "none";
+    } else if (event.target === albumModal) {
+        albumModal.style.display = "none";
     }
 });
 
@@ -174,6 +265,12 @@ tokenSubmitBtn.addEventListener('click', () => {
         token = newToken;
         tokenForm.style.display = 'none';
         tokenInputBtn.style.display = 'block';
+        
+        // Clear the cache for the new user
+        dataCache.short_term = null;
+        dataCache.medium_term = null;
+        dataCache.long_term = null;
+        
         displayAllData(document.getElementById('time-range-select').value);
     }
 });
@@ -190,3 +287,54 @@ timeRangeSelect.addEventListener('change', (event) => {
 //===================================================================
 
 displayAllData(document.getElementById('time-range-select').value);
+
+
+//===================================================================
+// 6. API Diagnostic Tool
+//===================================================================
+
+async function runApiDiagnostics(token, sampleTrackId) {
+    console.log("=========================================");
+    console.log("🔍 RUNNING SPOTIFY API DIAGNOSTIC TESTS");
+    console.log("=========================================");
+
+    const endpointsToTest = [
+        { name: "Current User Profile", path: "me" },
+        { name: "Get Single Track (Check for Popularity)", path: `tracks/${sampleTrackId}` },
+        { name: "Audio Features (Deprecated Nov 2024)", path: `audio-features/${sampleTrackId}` },
+        { name: "Recommendations (Deprecated Nov 2024)", path: `recommendations?seed_tracks=${sampleTrackId}&limit=1` },
+        { name: "Check Saved Tracks (Updated 2026 Endpoint)", path: `me/library/contains?ids=${sampleTrackId}` } 
+    ];
+
+    for (const endpoint of endpointsToTest) {
+        try {
+            console.log(`Testing: ${endpoint.name} (/v1/${endpoint.path})`);
+            const res = await fetch(`${BASE_API_URL}${endpoint.path}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                console.log(`✅ SUCCESS - Status: ${res.status}`);
+                console.log(data);
+                
+                // Explicitly check for the missing popularity field
+                if (endpoint.path.startsWith('tracks/')) {
+                    if (data.popularity !== undefined) {
+                        console.log(`ℹ️ Popularity value found: ${data.popularity}`);
+                    } else {
+                        console.warn("⚠️ Popularity field is missing from the track object.");
+                    }
+                }
+            } else {
+                console.error(`❌ FAILED - Status: ${res.status} ${res.statusText}`);
+                const errorData = await res.json();
+                console.error("Error details:", errorData);
+            }
+        } catch (error) {
+            console.error(`🚨 ERROR reaching /v1/${endpoint.path}:`, error.message);
+        }
+        console.log("-----------------------------------------");
+    }
+    console.log("🏁 DIAGNOSTICS COMPLETE");
+}
