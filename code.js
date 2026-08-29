@@ -52,6 +52,10 @@ async function getTopArtists(time_range) {
     return (await fetchWebApi(`me/top/artists?time_range=${time_range}&limit=5`)).items;
 }
 
+async function getArtist(artistId) {
+    return await fetchWebApi(`artists/${artistId}`);
+}
+
 //===================================================================
 // 2. Helper Functions
 //===================================================================
@@ -76,23 +80,23 @@ async function displayAllData(time_range) {
         return;
     }
 
-    tracksContainer.innerHTML = '<p>Loading your top tracks...</p>';
-    artistsContainer.innerHTML = '<p>Loading your top artists...</p>';
+    tracksContainer.innerHTML = '<p class="loading-text">Loading your top tracks...</p>';
+    artistsContainer.innerHTML = '<p class="loading-text">Loading your top artists...</p>';
 
     try {
         let topTracks, topArtists;
 
-        // Check if we already have this time range saved in memory
+        // 1. Check cache first
         if (dataCache[time_range]) {
             topTracks = dataCache[time_range].tracks;
             topArtists = dataCache[time_range].artists;
         } else {
-            // If not, fetch it from Spotify and save it to the cache
             topTracks = await getTopTracks(time_range);
             topArtists = await getTopArtists(time_range);
             dataCache[time_range] = { tracks: topTracks, artists: topArtists };
         }
 
+        // 2. Render Top Tracks
         if (topTracks.length === 0) {
             tracksContainer.innerHTML = '<p>No top tracks found for this time range.</p>';
         } else {
@@ -109,6 +113,7 @@ async function displayAllData(time_range) {
             tracksContainer.appendChild(trackList);
         }
 
+        // 3. Render Top Artists
         if (topArtists.length === 0) {
             artistsContainer.innerHTML = '<p>No top artists found for this time range.</p>';
         } else {
@@ -117,16 +122,26 @@ async function displayAllData(time_range) {
             topArtists.forEach(artist => {
                 const listItem = document.createElement('li');
                 listItem.textContent = artist.name;
+                listItem.dataset.artistId = artist.id; // Saves ID for click
                 listItem.classList.add('artist-item');
                 artistList.appendChild(listItem);
             });
             artistsContainer.appendChild(artistList);
         }
 
+        // 4. ATTACH LISTENERS FOR BOTH
+        // Track Clicks
         document.querySelectorAll('.track-item').forEach(item => {
             item.addEventListener('click', () => {
                 const trackId = item.dataset.trackId;
                 showTrackDetails(trackId, topTracks);
+            });
+        });
+
+        // Artist Clicks
+        document.querySelectorAll('.artist-item').forEach(item => {
+            item.addEventListener('click', () => {
+                showArtistDetails(item.dataset.artistId, null); 
             });
         });
 
@@ -143,21 +158,27 @@ function showTrackDetails(trackId, topTracks) {
 
     const modal = document.getElementById('track-modal');
     
-    // Track Info
+    // Core Track Info
     document.getElementById('modal-album-art').src = track.album.images[0].url;
     document.getElementById('modal-track-name').textContent = track.name;
-    document.getElementById('modal-artist-name').textContent = track.artists.map(artist => artist.name).join(', ');
     document.getElementById('modal-release-date').textContent = formatDate(track.album.release_date);
     document.getElementById('modal-duration').textContent = msToMinutesAndSeconds(track.duration_ms);
     
+    // Render the dynamic clickable artist links
+    renderClickableArtists(track.artists, 'modal-artist-name', 'track-modal');
+    
     // Explicit Badge Toggle
     const explicitBadge = document.getElementById('modal-explicit');
-    explicitBadge.style.display = track.explicit ? 'inline-block' : 'none';
+    if (explicitBadge) {
+        explicitBadge.style.display = track.explicit ? 'inline-block' : 'none';
+    }
 
     // Clickable Album Name
     const albumNameEl = document.getElementById('modal-album-name');
-    albumNameEl.textContent = track.album.name;
-    albumNameEl.onclick = () => showAlbumDetails(track.album, track.artists);
+    if (albumNameEl) {
+        albumNameEl.textContent = track.album.name;
+        albumNameEl.onclick = () => showAlbumDetails(track.album, track.artists);
+    }
 
     modal.style.display = "block";
 }
@@ -176,13 +197,81 @@ function showAlbumDetails(album, trackArtists) {
     
     // The album object inside a track payload usually has its own artists array
     const artists = album.artists ? album.artists.map(a => a.name).join(', ') : trackArtists.map(a => a.name).join(', ');
-    document.getElementById('modal-album-only-artist').textContent = artists;
+    const artistsToUse = album.artists ? album.artists : trackArtists;
+    renderClickableArtists(artistsToUse, 'modal-album-only-artist', 'album-modal');
     
     // Set up the URI link (Clicking this will try to open the Spotify Desktop App)
     const uriEl = document.getElementById('modal-album-only-uri');
     uriEl.href = album.uri; 
 
     modal.style.display = "block";
+}
+
+let previousModalForArtist = null; // Remembers where to go 'back' to
+
+async function showArtistDetails(artistId, fromModalId) {
+    previousModalForArtist = fromModalId;
+    
+    // Hide any currently open modals
+    document.getElementById('track-modal').style.display = "none";
+    document.getElementById('album-modal').style.display = "none";
+
+    try {
+        const artist = await getArtist(artistId);
+        const modal = document.getElementById('artist-modal');
+        
+        // Handle images (some obscure artists might not have a profile pic)
+        const imgEl = document.getElementById('modal-artist-art');
+        imgEl.src = artist.images.length > 0 ? artist.images[0].url : 'https://via.placeholder.com/160?text=No+Image';
+        
+        document.getElementById('modal-artist-name-title').textContent = artist.name;
+        document.getElementById('modal-artist-followers').textContent = 
+            (artist.followers && artist.followers.total) 
+                ? artist.followers.total.toLocaleString() 
+                : 'N/A';
+        
+        // Render Genre Tags
+        const genresContainer = document.getElementById('modal-artist-genres');
+        genresContainer.innerHTML = '';
+        if (artist.genres && artist.genres.length > 0) {
+            artist.genres.forEach(genre => {
+                const span = document.createElement('span');
+                span.className = 'genre-tag';
+                span.textContent = genre;
+                genresContainer.appendChild(span);
+            });
+        } else {
+            genresContainer.innerHTML = '<span class="genre-tag">No genres listed</span>';
+        }
+        
+        document.getElementById('modal-artist-uri').href = artist.uri;
+        
+        // Toggle the Back button visibility based on if we came from another modal
+        document.getElementById('back-to-prev-btn').style.display = fromModalId ? 'inline' : 'none';
+        
+        modal.style.display = "block";
+    } catch (error) {
+        console.error("Failed to load artist details", error);
+    }
+}
+
+// Helper to turn an array of artists into clickable links inside a target element
+function renderClickableArtists(artists, targetElementId, currentModalId) {
+    const container = document.getElementById(targetElementId);
+    container.innerHTML = ''; // Clear existing
+    
+    artists.forEach((artist, index) => {
+        const span = document.createElement('span');
+        span.textContent = artist.name;
+        span.className = 'clickable-artist';
+        span.onclick = () => showArtistDetails(artist.id, currentModalId);
+        container.appendChild(span);
+        
+        // Add a comma after all but the last artist
+        if (index < artists.length - 1) {
+            container.appendChild(document.createTextNode(', '));
+        }
+    });
 }
 
 function formatDate(dateString) {
@@ -280,6 +369,28 @@ const timeRangeSelect = document.getElementById('time-range-select');
 timeRangeSelect.addEventListener('change', (event) => {
     const selectedTimeRange = event.target.value;
     displayAllData(selectedTimeRange);
+});
+
+// --- Modal Listeners (Add these with your existing ones) ---
+document.getElementById('close-artist-modal').addEventListener('click', () => {
+    document.getElementById('artist-modal').style.display = "none";
+});
+
+document.getElementById('back-to-prev-btn').addEventListener('click', () => {
+    document.getElementById('artist-modal').style.display = "none";
+    if (previousModalForArtist) {
+        document.getElementById(previousModalForArtist).style.display = "block";
+    }
+});
+
+window.addEventListener('click', (event) => {
+    const trackModal = document.getElementById('track-modal');
+    const albumModal = document.getElementById('album-modal');
+    const artistModal = document.getElementById('artist-modal');
+    
+    if (event.target === trackModal) trackModal.style.display = "none";
+    if (event.target === albumModal) albumModal.style.display = "none";
+    if (event.target === artistModal) artistModal.style.display = "none";
 });
 
 //===================================================================

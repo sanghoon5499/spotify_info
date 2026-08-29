@@ -447,3 +447,51 @@ li:hover {
     transform: translateY(-2px);
     text-decoration: none;
 }
+
+/*-------------------
+  10. Artist Modal & Elements
+-------------------*/
+#modal-artist-art {
+    width: 160px;
+    height: 160px;
+    object-fit: cover;
+    border-radius: 50%; /* Makes the profile picture a circle */
+    margin: 30px auto 20px auto;
+    display: block;
+    box-shadow: var(--shadow-lg);
+}
+
+.genre-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin: 15px 0 20px 0;
+}
+
+.genre-tag {
+    background-color: var(--item-bg);
+    border: 1px solid var(--border-color);
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 0.85rem;
+    color: var(--text-main);
+    text-transform: capitalize;
+}
+
+.clickable-artist {
+    color: var(--accent-color);
+    cursor: pointer;
+    transition: color 0.2s;
+    text-decoration: none;
+}
+
+.clickable-artist:hover {
+    color: var(--accent-hover);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.artist-item {
+    cursor: pointer; /* Makes the main Top 5 Artist list clickable */
+}
