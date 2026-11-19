@@ -54,7 +54,7 @@ body {
     border-radius: 16px;
     box-shadow: var(--shadow-lg);
     width: 100%;
-    max-width: 1000px; /* Expanded for horizontal layout */
+    max-width: 1000px;
 }
 
 /*-------------------
@@ -87,7 +87,7 @@ h1 {
 }
 
 /*-------------------
-  3. Grid Layout (The big change)
+  3. Grid Layout
 -------------------*/
 .dashboard-grid {
     display: grid;
@@ -231,7 +231,6 @@ li:hover {
 }
 
 .token-form {
-    display: none;
     display: flex;
     gap: 8px;
 }
@@ -365,15 +364,6 @@ li:hover {
     box-shadow: var(--shadow-sm);
 }
 
-.warning {
-    font-size: 0.85em !important;
-    color: #ef4444 !important;
-    margin-top: 20px !important;
-    background: #fef2f2;
-    padding: 10px;
-    border-radius: 6px;
-}
-
 .close-button {
     position: absolute;
     top: 20px;
@@ -391,7 +381,7 @@ li:hover {
 }
 
 /*-------------------
-  9. New Modal Badges & Links
+  9. Modal Badges & Links
 -------------------*/
 .explicit-badge {
     display: none; /* hidden by default, toggled in JS */
@@ -427,27 +417,6 @@ li:hover {
     color: var(--text-main);
 }
 
-#modal-album-only-uri {
-    display: block;
-    background-color: var(--accent-color);
-    color: #ffffff !important; /* Forced to white */
-    padding: 12px 20px;
-    border-radius: 8px;
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 0.95rem;
-    margin-top: 20px;
-    text-align: center;
-    transition: background-color 0.2s ease, transform 0.2s ease;
-}
-
-#modal-album-only-uri:hover {
-    background-color: var(--accent-hover);
-    color: #ffffff !important;
-    transform: translateY(-2px);
-    text-decoration: none;
-}
-
 /*-------------------
   10. Artist Modal & Elements
 -------------------*/
@@ -455,7 +424,7 @@ li:hover {
     width: 160px;
     height: 160px;
     object-fit: cover;
-    border-radius: 50%; /* Makes the profile picture a circle */
+    border-radius: 50%;
     margin: 30px auto 20px auto;
     display: block;
     box-shadow: var(--shadow-lg);
@@ -493,5 +462,5 @@ li:hover {
 }
 
 .artist-item {
-    cursor: pointer; /* Makes the main Top 5 Artist list clickable */
+    cursor: pointer;
 }

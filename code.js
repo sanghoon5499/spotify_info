@@ -1,24 +1,9 @@
 //===================================================================
-// Enable this section to test the Spotify API endpoints independently of the main app functionality.
-//===================================================================
-
-// document.getElementById('test-api-btn').addEventListener('click', () => {
-//     if (!token || token === 'YOUR_SPOTIFY_ACCESS_TOKEN') {
-//         console.warn("⚠️ Please set and save your API key first!");
-//         return;
-//     }
-//     console.log("Button clicked! Triggering diagnostics...");
-//     // Uses a hardcoded track ID to test the endpoints independently
-//     runApiDiagnostics(token, '4cOdK2wGLETKBW3PvgPWqT'); 
-// });
-
-
-
-//===================================================================
 // 1. Configuration & API Interaction
 //===================================================================
 
-let token = 'YOUR_SPOTIFY_ACCESS_TOKEN';
+const DEFAULT_TOKEN = 'YOUR_SPOTIFY_ACCESS_TOKEN';
+let token = DEFAULT_TOKEN;
 const BASE_API_URL = 'https://api.spotify.com/v1/';
 
 const dataCache = {
@@ -41,19 +26,21 @@ async function fetchWebApi(endpoint) {
     if (!res.ok) {
         throw new Error(`API call to ${endpoint} failed with status: ${res.status}`);
     }
-    return await res.json();
+    return res.json();
 }
 
-async function getTopTracks(time_range) {
-    return (await fetchWebApi(`me/top/tracks?time_range=${time_range}&limit=5`)).items;
+async function getTopTracks(timeRange) {
+    const data = await fetchWebApi(`me/top/tracks?time_range=${timeRange}&limit=5`);
+    return data.items;
 }
 
-async function getTopArtists(time_range) {
-    return (await fetchWebApi(`me/top/artists?time_range=${time_range}&limit=5`)).items;
+async function getTopArtists(timeRange) {
+    const data = await fetchWebApi(`me/top/artists?time_range=${timeRange}&limit=5`);
+    return data.items;
 }
 
-async function getArtist(artistId) {
-    return await fetchWebApi(`artists/${artistId}`);
+function getArtist(artistId) {
+    return fetchWebApi(`artists/${artistId}`);
 }
 
 //===================================================================
@@ -74,7 +61,7 @@ async function displayAllData(time_range) {
     const tracksContainer = document.getElementById('top-tracks-container');
     const artistsContainer = document.getElementById('top-artists-container');
 
-    if (!token || token === 'YOUR_SPOTIFY_ACCESS_TOKEN') {
+    if (!token || token === DEFAULT_TOKEN) {
         tracksContainer.innerHTML = '';
         artistsContainer.innerHTML = '<p>Please enter your Spotify API Key above to see your data.</p>';
         return;
@@ -86,7 +73,6 @@ async function displayAllData(time_range) {
     try {
         let topTracks, topArtists;
 
-        // 1. Check cache first
         if (dataCache[time_range]) {
             topTracks = dataCache[time_range].tracks;
             topArtists = dataCache[time_range].artists;
@@ -96,7 +82,6 @@ async function displayAllData(time_range) {
             dataCache[time_range] = { tracks: topTracks, artists: topArtists };
         }
 
-        // 2. Render Top Tracks
         if (topTracks.length === 0) {
             tracksContainer.innerHTML = '<p>No top tracks found for this time range.</p>';
         } else {
@@ -106,14 +91,13 @@ async function displayAllData(time_range) {
                 const listItem = document.createElement('li');
                 const artists = track.artists.map(artist => artist.name).join(', ');
                 listItem.textContent = `${track.name} by ${artists}`;
-                listItem.dataset.trackId = track.id;
                 listItem.classList.add('track-item');
+                listItem.addEventListener('click', () => showTrackDetails(track.id, topTracks));
                 trackList.appendChild(listItem);
             });
             tracksContainer.appendChild(trackList);
         }
 
-        // 3. Render Top Artists
         if (topArtists.length === 0) {
             artistsContainer.innerHTML = '<p>No top artists found for this time range.</p>';
         } else {
@@ -122,28 +106,12 @@ async function displayAllData(time_range) {
             topArtists.forEach(artist => {
                 const listItem = document.createElement('li');
                 listItem.textContent = artist.name;
-                listItem.dataset.artistId = artist.id; // Saves ID for click
                 listItem.classList.add('artist-item');
+                listItem.addEventListener('click', () => showArtistDetails(artist.id));
                 artistList.appendChild(listItem);
             });
             artistsContainer.appendChild(artistList);
         }
-
-        // 4. ATTACH LISTENERS FOR BOTH
-        // Track Clicks
-        document.querySelectorAll('.track-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const trackId = item.dataset.trackId;
-                showTrackDetails(trackId, topTracks);
-            });
-        });
-
-        // Artist Clicks
-        document.querySelectorAll('.artist-item').forEach(item => {
-            item.addEventListener('click', () => {
-                showArtistDetails(item.dataset.artistId, null); 
-            });
-        });
 
     } catch (error) {
         console.error("Error fetching data:", error);
@@ -195,21 +163,18 @@ function showAlbumDetails(album, trackArtists) {
     document.getElementById('modal-album-only-tracks').textContent = album.total_tracks;
     document.getElementById('modal-album-only-release-date').textContent = formatDate(album.release_date);
     
-    // The album object inside a track payload usually has its own artists array
-    const artists = album.artists ? album.artists.map(a => a.name).join(', ') : trackArtists.map(a => a.name).join(', ');
-    const artistsToUse = album.artists ? album.artists : trackArtists;
+    const artistsToUse = album.artists || trackArtists;
     renderClickableArtists(artistsToUse, 'modal-album-only-artist', 'album-modal');
-    
-    // Set up the URI link (Clicking this will try to open the Spotify Desktop App)
+
     const uriEl = document.getElementById('modal-album-only-uri');
     uriEl.href = album.uri; 
 
     modal.style.display = "block";
 }
 
-let previousModalForArtist = null; // Remembers where to go 'back' to
+let previousModalForArtist = null;
 
-async function showArtistDetails(artistId, fromModalId) {
+async function showArtistDetails(artistId, fromModalId = null) {
     previousModalForArtist = fromModalId;
     
     // Hide any currently open modals
@@ -264,7 +229,7 @@ function renderClickableArtists(artists, targetElementId, currentModalId) {
         const span = document.createElement('span');
         span.textContent = artist.name;
         span.className = 'clickable-artist';
-        span.onclick = () => showArtistDetails(artist.id, currentModalId);
+        span.addEventListener('click', () => showArtistDetails(artist.id, currentModalId));
         container.appendChild(span);
         
         // Add a comma after all but the last artist
@@ -291,59 +256,48 @@ function formatDate(dateString) {
 // 4. Event Listeners
 //===================================================================
 
-// --- Modal Listeners ---
-document.getElementById('close-track-modal').addEventListener('click', () => {
-    document.getElementById('track-modal').style.display = "none";
+document.querySelectorAll('.close-button').forEach(button => {
+    button.addEventListener('click', () => {
+        button.closest('.modal').style.display = 'none';
+    });
 });
 
-document.getElementById('close-album-modal').addEventListener('click', () => {
-    document.getElementById('album-modal').style.display = "none";
-});
-
-// --- Back Button Listener ---
 document.getElementById('back-to-track-btn').addEventListener('click', () => {
-    document.getElementById('album-modal').style.display = "none";
-    document.getElementById('track-modal').style.display = "block";
+    document.getElementById('album-modal').style.display = 'none';
+    document.getElementById('track-modal').style.display = 'block';
 });
 
-window.addEventListener('click', (event) => {
-    const trackModal = document.getElementById('track-modal');
-    const albumModal = document.getElementById('album-modal');
-    
-    // Close whichever modal is currently being clicked outside of
-    if (event.target === trackModal) {
-        trackModal.style.display = "none";
-    } else if (event.target === albumModal) {
-        albumModal.style.display = "none";
+document.getElementById('back-to-prev-btn').addEventListener('click', () => {
+    document.getElementById('artist-modal').style.display = 'none';
+    if (previousModalForArtist) {
+        document.getElementById(previousModalForArtist).style.display = 'block';
     }
 });
 
-// --- Info Button Listener ---
 const infoBtn = document.getElementById('info-btn');
 const disclaimerPopup = document.getElementById('disclaimer');
 
 infoBtn.addEventListener('click', () => {
-    if (disclaimerPopup.style.display === 'block') {
-        disclaimerPopup.style.display = 'none';
-    } else {
-        disclaimerPopup.style.display = 'block';
-    }
+    disclaimerPopup.style.display = disclaimerPopup.style.display === 'block' ? 'none' : 'block';
 });
 
 window.addEventListener('click', (event) => {
+    if (event.target.classList.contains('modal')) {
+        event.target.style.display = 'none';
+    }
+
     if (event.target !== infoBtn && !disclaimerPopup.contains(event.target)) {
         disclaimerPopup.style.display = 'none';
     }
 });
 
-// --- API Key Input Listeners ---
 const tokenInputBtn = document.getElementById('token-input-btn');
 const tokenForm = document.querySelector('.token-form');
 const tokenInput = document.getElementById('token-input');
 const tokenSubmitBtn = document.getElementById('token-submit-btn');
 
 tokenInputBtn.addEventListener('click', () => {
-    tokenForm.style.display = 'block';
+    tokenForm.style.display = 'flex';
     tokenInputBtn.style.display = 'none';
     tokenInput.focus();
 });
@@ -354,43 +308,17 @@ tokenSubmitBtn.addEventListener('click', () => {
         token = newToken;
         tokenForm.style.display = 'none';
         tokenInputBtn.style.display = 'block';
-        
-        // Clear the cache for the new user
-        dataCache.short_term = null;
-        dataCache.medium_term = null;
-        dataCache.long_term = null;
-        
+
+        Object.keys(dataCache).forEach(timeRange => {
+            dataCache[timeRange] = null;
+        });
+
         displayAllData(document.getElementById('time-range-select').value);
     }
 });
 
-// --- Time Range Dropdown Listener ---
-const timeRangeSelect = document.getElementById('time-range-select');
-timeRangeSelect.addEventListener('change', (event) => {
-    const selectedTimeRange = event.target.value;
-    displayAllData(selectedTimeRange);
-});
-
-// --- Modal Listeners (Add these with your existing ones) ---
-document.getElementById('close-artist-modal').addEventListener('click', () => {
-    document.getElementById('artist-modal').style.display = "none";
-});
-
-document.getElementById('back-to-prev-btn').addEventListener('click', () => {
-    document.getElementById('artist-modal').style.display = "none";
-    if (previousModalForArtist) {
-        document.getElementById(previousModalForArtist).style.display = "block";
-    }
-});
-
-window.addEventListener('click', (event) => {
-    const trackModal = document.getElementById('track-modal');
-    const albumModal = document.getElementById('album-modal');
-    const artistModal = document.getElementById('artist-modal');
-    
-    if (event.target === trackModal) trackModal.style.display = "none";
-    if (event.target === albumModal) albumModal.style.display = "none";
-    if (event.target === artistModal) artistModal.style.display = "none";
+document.getElementById('time-range-select').addEventListener('change', (event) => {
+    displayAllData(event.target.value);
 });
 
 //===================================================================
@@ -398,54 +326,3 @@ window.addEventListener('click', (event) => {
 //===================================================================
 
 displayAllData(document.getElementById('time-range-select').value);
-
-
-//===================================================================
-// 6. API Diagnostic Tool
-//===================================================================
-
-async function runApiDiagnostics(token, sampleTrackId) {
-    console.log("=========================================");
-    console.log("🔍 RUNNING SPOTIFY API DIAGNOSTIC TESTS");
-    console.log("=========================================");
-
-    const endpointsToTest = [
-        { name: "Current User Profile", path: "me" },
-        { name: "Get Single Track (Check for Popularity)", path: `tracks/${sampleTrackId}` },
-        { name: "Audio Features (Deprecated Nov 2024)", path: `audio-features/${sampleTrackId}` },
-        { name: "Recommendations (Deprecated Nov 2024)", path: `recommendations?seed_tracks=${sampleTrackId}&limit=1` },
-        { name: "Check Saved Tracks (Updated 2026 Endpoint)", path: `me/library/contains?ids=${sampleTrackId}` } 
-    ];
-
-    for (const endpoint of endpointsToTest) {
-        try {
-            console.log(`Testing: ${endpoint.name} (/v1/${endpoint.path})`);
-            const res = await fetch(`${BASE_API_URL}${endpoint.path}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            
-            if (res.ok) {
-                const data = await res.json();
-                console.log(`✅ SUCCESS - Status: ${res.status}`);
-                console.log(data);
-                
-                // Explicitly check for the missing popularity field
-                if (endpoint.path.startsWith('tracks/')) {
-                    if (data.popularity !== undefined) {
-                        console.log(`ℹ️ Popularity value found: ${data.popularity}`);
-                    } else {
-                        console.warn("⚠️ Popularity field is missing from the track object.");
-                    }
-                }
-            } else {
-                console.error(`❌ FAILED - Status: ${res.status} ${res.statusText}`);
-                const errorData = await res.json();
-                console.error("Error details:", errorData);
-            }
-        } catch (error) {
-            console.error(`🚨 ERROR reaching /v1/${endpoint.path}:`, error.message);
-        }
-        console.log("-----------------------------------------");
-    }
-    console.log("🏁 DIAGNOSTICS COMPLETE");
-}
