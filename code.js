@@ -10,7 +10,50 @@ const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
 const PKCE_VERIFIER_KEY = 'spotify_pkce_verifier';
 const OAUTH_STATE_KEY = 'spotify_oauth_state';
 
+const APP_STATES = {
+    disconnected: {
+        title: 'Connect to Spotify',
+        message: 'Authorize this page to load your listening data.'
+    },
+    connecting: {
+        title: 'Connecting to Spotify',
+        message: 'Completing authorization in this browser tab.'
+    },
+    loading: {
+        title: 'Loading your listening data',
+        message: 'Fetching your top tracks and artists.'
+    },
+    empty: {
+        title: 'No listening data found',
+        message: 'Spotify returned no top tracks or artists for this time range.'
+    }
+};
+
+const elements = {
+    appStatus: document.getElementById('app-status'),
+    statusTitle: document.getElementById('status-title'),
+    statusMessage: document.getElementById('status-message'),
+    dashboard: document.getElementById('dashboard-content'),
+    tracksContainer: document.getElementById('top-tracks-container'),
+    artistsContainer: document.getElementById('top-artists-container'),
+    connectButton: document.getElementById('connect-spotify-btn'),
+    disconnectButton: document.getElementById('disconnect-spotify-btn'),
+    retryButton: document.getElementById('retry-btn'),
+    timeRangeSelect: document.getElementById('time-range-select'),
+    infoButton: document.getElementById('info-btn'),
+    infoPopup: document.getElementById('disclaimer')
+};
+
+class AppError extends Error {
+    constructor(kind, message) {
+        super(message);
+        this.kind = kind;
+    }
+}
+
 let token = null;
+let requestVersion = 0;
+let previousModalForArtist = null;
 
 const dataCache = {
     short_term: null,
@@ -79,35 +122,47 @@ function clearTemporaryOAuthData() {
 }
 
 async function exchangeAuthorizationCode(code, codeVerifier) {
-    const response = await fetch(SPOTIFY_TOKEN_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams({
-            client_id: SPOTIFY_CLIENT_ID,
-            grant_type: 'authorization_code',
-            code,
-            redirect_uri: SPOTIFY_REDIRECT_URI,
-            code_verifier: codeVerifier
-        })
-    });
+    let response;
+    try {
+        response = await fetch(SPOTIFY_TOKEN_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams({
+                client_id: SPOTIFY_CLIENT_ID,
+                grant_type: 'authorization_code',
+                code,
+                redirect_uri: SPOTIFY_REDIRECT_URI,
+                code_verifier: codeVerifier
+            })
+        });
+    } catch {
+        throw new AppError('authorization', 'Could not reach Spotify to complete authorization. Connect again.');
+    }
 
-    const responseBody = await response.json();
+    const responseBody = await response.json().catch(() => ({}));
     if (!response.ok || !responseBody.access_token) {
-        throw new Error(responseBody.error_description || 'Spotify authorization failed. Connect again.');
+        throw new AppError(
+            'authorization',
+            responseBody.error_description || 'Spotify authorization failed. Connect again.'
+        );
     }
 
     return responseBody.access_token;
 }
 
-async function handleOAuthCallback() {
+function hasOAuthResponse() {
     const params = new URLSearchParams(window.location.search);
-    const hasOAuthResponse = params.has('code') || params.has('error') || params.has('state');
-    if (!hasOAuthResponse) {
+    return params.has('code') || params.has('error') || params.has('state');
+}
+
+async function handleOAuthCallback() {
+    if (!hasOAuthResponse()) {
         return false;
     }
 
+    const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
     const authorizationError = params.get('error');
     const returnedState = params.get('state');
@@ -118,18 +173,21 @@ async function handleOAuthCallback() {
     clearOAuthCallbackParams();
 
     if (!expectedState || !returnedState || returnedState !== expectedState) {
-        throw new Error('Spotify authorization could not be verified. Connect again.');
+        throw new AppError('authorization', 'Spotify authorization could not be verified. Connect again.');
     }
 
     if (authorizationError) {
         const message = authorizationError === 'access_denied'
             ? 'Spotify authorization was cancelled.'
             : 'Spotify authorization failed.';
-        throw new Error(`${message} Connect again.`);
+        throw new AppError('authorization', `${message} Connect again.`);
     }
 
     if (!code || !codeVerifier) {
-        throw new Error('Spotify returned an incomplete authorization response. Connect again.');
+        throw new AppError(
+            'authorization',
+            'Spotify returned an incomplete authorization response. Connect again.'
+        );
     }
 
     token = await exchangeAuthorizationCode(code, codeVerifier);
@@ -144,27 +202,37 @@ async function handleOAuthCallback() {
 const BASE_API_URL = 'https://api.spotify.com/v1/';
 
 async function fetchWebApi(endpoint) {
-    const response = await fetch(`${BASE_API_URL}${endpoint}`, {
-        headers: { Authorization: `Bearer ${token}` }
-    });
+    let response;
+    try {
+        response = await fetch(`${BASE_API_URL}${endpoint}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+    } catch {
+        throw new AppError('general', 'Could not reach Spotify. Check your connection and try again.');
+    }
 
     if (response.status === 401) {
         token = null;
         clearDataCache();
-        throw new Error('Your Spotify session expired. Connect Spotify again.');
+        throw new AppError('authorization', 'Your Spotify session expired. Connect Spotify again.');
     }
 
     if (response.status === 403) {
-        throw new Error('Spotify did not grant access to this data. Connect Spotify again.');
+        token = null;
+        clearDataCache();
+        throw new AppError(
+            'authorization',
+            'Spotify did not grant access to this data. Check that your account is allowed to use this app.'
+        );
     }
 
     if (response.status === 429) {
         const retryAfter = response.headers.get('Retry-After') || 5;
-        throw new Error(`Spotify rate limited this request. Try again in ${retryAfter} seconds.`);
+        throw new AppError('rate-limit', `Spotify asked this page to wait ${retryAfter} seconds before trying again.`);
     }
 
     if (!response.ok) {
-        throw new Error(`Spotify request failed with status ${response.status}.`);
+        throw new AppError('general', `Spotify returned an unexpected ${response.status} response. Try again.`);
     }
 
     return response.json();
@@ -185,8 +253,49 @@ function getArtist(artistId) {
 }
 
 //===================================================================
-// 3. Helper Functions
+// 3. UI State & Helpers
 //===================================================================
+
+function setAppState(state, options = {}) {
+    const defaultContent = APP_STATES[state] || {};
+    const isConnected = Boolean(token);
+    const showDashboard = state === 'loaded' || state === 'empty';
+
+    elements.appStatus.dataset.state = state;
+    elements.statusTitle.textContent = options.title || defaultContent.title || '';
+    elements.statusMessage.textContent = options.message || defaultContent.message || '';
+    elements.appStatus.hidden = state === 'loaded';
+    elements.dashboard.hidden = !showDashboard;
+    elements.connectButton.hidden = isConnected || state === 'connecting';
+    elements.connectButton.disabled = state === 'connecting';
+    elements.disconnectButton.hidden = !isConnected;
+    elements.retryButton.hidden = !options.canRetry;
+    elements.timeRangeSelect.disabled = !isConnected || state === 'loading' || state === 'connecting';
+}
+
+function showAppError(error) {
+    const appError = error instanceof AppError
+        ? error
+        : new AppError('general', 'Something went wrong while loading Spotify data. Try again.');
+
+    const titles = {
+        authorization: 'Spotify connection failed',
+        'rate-limit': 'Spotify is temporarily rate limiting requests',
+        general: 'Spotify request failed'
+    };
+
+    if (!token) {
+        clearRenderedData();
+    } else {
+        closeAllModals();
+    }
+
+    setAppState('error', {
+        title: titles[appError.kind] || titles.general,
+        message: appError.message,
+        canRetry: Boolean(token) && appError.kind !== 'authorization'
+    });
+}
 
 function msToMinutesAndSeconds(ms) {
     const minutes = Math.floor(ms / 60000);
@@ -206,35 +315,88 @@ function formatDate(dateString) {
     return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 }
 
-function showDashboardMessage(message, isError = false) {
-    const tracksContainer = document.getElementById('top-tracks-container');
-    const artistsContainer = document.getElementById('top-artists-container');
-    const messageElement = document.createElement('p');
-
-    messageElement.textContent = message;
-    if (isError) {
-        messageElement.classList.add('error-text');
+function openModal(modal) {
+    if (!modal.open) {
+        modal.showModal();
     }
+}
 
-    tracksContainer.replaceChildren();
-    artistsContainer.replaceChildren(messageElement);
+function closeModal(modal) {
+    if (modal.open) {
+        modal.close();
+    }
+}
+
+function closeAllModals() {
+    document.querySelectorAll('.modal').forEach(closeModal);
+}
+
+function clearRenderedData() {
+    requestVersion += 1;
+    elements.tracksContainer.replaceChildren();
+    elements.artistsContainer.replaceChildren();
+    closeAllModals();
+
+    const textElementIds = [
+        'modal-track-name',
+        'modal-release-date',
+        'modal-duration',
+        'modal-artist-name',
+        'modal-album-name',
+        'modal-album-only-name',
+        'modal-album-only-artist',
+        'modal-album-only-type',
+        'modal-album-only-tracks',
+        'modal-album-only-release-date',
+        'modal-artist-name-title'
+    ];
+    textElementIds.forEach(elementId => {
+        document.getElementById(elementId).textContent = '';
+    });
+    document.getElementById('modal-artist-genres').replaceChildren();
+    document.getElementById('modal-explicit').style.display = 'none';
+    document.getElementById('back-to-prev-btn').hidden = true;
+
+    document.querySelectorAll('.modal img').forEach(image => {
+        image.removeAttribute('src');
+        image.alt = '';
+    });
+
+    document.querySelectorAll('.spotify-link-button').forEach(link => {
+        link.removeAttribute('href');
+    });
+
+    document.getElementById('modal-album-name').onclick = null;
+    previousModalForArtist = null;
+}
+
+function disconnectSpotify() {
+    token = null;
+    clearDataCache();
+    clearTemporaryOAuthData();
+    clearRenderedData();
+    setAppState('disconnected');
+}
+
+function renderEmptyState(container, message) {
+    const emptyMessage = document.createElement('p');
+    emptyMessage.className = 'empty-state';
+    emptyMessage.textContent = message;
+    container.replaceChildren(emptyMessage);
 }
 
 //===================================================================
-// 4. UI Rendering & Display Logic
+// 4. Dashboard Rendering
 //===================================================================
 
 async function displayAllData(timeRange) {
-    const tracksContainer = document.getElementById('top-tracks-container');
-    const artistsContainer = document.getElementById('top-artists-container');
-
     if (!token) {
-        showDashboardMessage('Connect Spotify to see your data.');
+        setAppState('disconnected');
         return;
     }
 
-    tracksContainer.innerHTML = '<p class="loading-text">Loading your top tracks...</p>';
-    artistsContainer.innerHTML = '<p class="loading-text">Loading your top artists...</p>';
+    const currentRequest = ++requestVersion;
+    setAppState('loading');
 
     try {
         let topTracks;
@@ -244,45 +406,72 @@ async function displayAllData(timeRange) {
             topTracks = dataCache[timeRange].tracks;
             topArtists = dataCache[timeRange].artists;
         } else {
-            topTracks = await getTopTracks(timeRange);
-            topArtists = await getTopArtists(timeRange);
+            [topTracks, topArtists] = await Promise.all([
+                getTopTracks(timeRange),
+                getTopArtists(timeRange)
+            ]);
             dataCache[timeRange] = { tracks: topTracks, artists: topArtists };
         }
 
-        if (topTracks.length === 0) {
-            tracksContainer.innerHTML = '<p>No top tracks found for this time range.</p>';
-        } else {
-            tracksContainer.replaceChildren();
-            const trackList = document.createElement('ol');
-            topTracks.forEach(track => {
-                const listItem = document.createElement('li');
-                const artists = track.artists.map(artist => artist.name).join(', ');
-                listItem.textContent = `${track.name} by ${artists}`;
-                listItem.classList.add('track-item');
-                listItem.addEventListener('click', () => showTrackDetails(track.id, topTracks));
-                trackList.appendChild(listItem);
-            });
-            tracksContainer.appendChild(trackList);
+        if (currentRequest !== requestVersion || !token) {
+            return;
         }
 
-        if (topArtists.length === 0) {
-            artistsContainer.innerHTML = '<p>No top artists found for this time range.</p>';
-        } else {
-            artistsContainer.replaceChildren();
-            const artistList = document.createElement('ol');
-            topArtists.forEach(artist => {
-                const listItem = document.createElement('li');
-                listItem.textContent = artist.name;
-                listItem.classList.add('artist-item');
-                listItem.addEventListener('click', () => showArtistDetails(artist.id));
-                artistList.appendChild(listItem);
-            });
-            artistsContainer.appendChild(artistList);
-        }
+        renderTopTracks(topTracks);
+        renderTopArtists(topArtists);
+        setAppState(topTracks.length === 0 && topArtists.length === 0 ? 'empty' : 'loaded');
     } catch (error) {
+        if (currentRequest !== requestVersion) {
+            return;
+        }
         console.error('Error fetching Spotify data:', error);
-        showDashboardMessage(error.message, true);
+        showAppError(error);
     }
+}
+
+function renderTopTracks(topTracks) {
+    if (topTracks.length === 0) {
+        renderEmptyState(elements.tracksContainer, 'No top tracks found for this time range.');
+        return;
+    }
+
+    const trackList = document.createElement('ol');
+    topTracks.forEach(track => {
+        const listItem = document.createElement('li');
+        const itemButton = document.createElement('button');
+        const artists = track.artists.map(artist => artist.name).join(', ');
+
+        itemButton.type = 'button';
+        itemButton.className = 'list-item-button';
+        itemButton.textContent = `${track.name} by ${artists}`;
+        itemButton.addEventListener('click', () => showTrackDetails(track.id, topTracks));
+        listItem.appendChild(itemButton);
+        trackList.appendChild(listItem);
+    });
+
+    elements.tracksContainer.replaceChildren(trackList);
+}
+
+function renderTopArtists(topArtists) {
+    if (topArtists.length === 0) {
+        renderEmptyState(elements.artistsContainer, 'No top artists found for this time range.');
+        return;
+    }
+
+    const artistList = document.createElement('ol');
+    topArtists.forEach(artist => {
+        const listItem = document.createElement('li');
+        const itemButton = document.createElement('button');
+
+        itemButton.type = 'button';
+        itemButton.className = 'list-item-button';
+        itemButton.textContent = artist.name;
+        itemButton.addEventListener('click', () => showArtistDetails(artist.id));
+        listItem.appendChild(itemButton);
+        artistList.appendChild(listItem);
+    });
+
+    elements.artistsContainer.replaceChildren(artistList);
 }
 
 function showTrackDetails(trackId, topTracks) {
@@ -290,58 +479,63 @@ function showTrackDetails(trackId, topTracks) {
     if (!track) return;
 
     const modal = document.getElementById('track-modal');
+    const albumArt = document.getElementById('modal-album-art');
 
-    document.getElementById('modal-album-art').src = track.album.images[0].url;
+    albumArt.src = track.album.images[0].url;
+    albumArt.alt = `${track.album.name} album cover`;
     document.getElementById('modal-track-name').textContent = track.name;
     document.getElementById('modal-release-date').textContent = formatDate(track.album.release_date);
     document.getElementById('modal-duration').textContent = msToMinutesAndSeconds(track.duration_ms);
-
     renderClickableArtists(track.artists, 'modal-artist-name', 'track-modal');
 
-    const explicitBadge = document.getElementById('modal-explicit');
-    explicitBadge.style.display = track.explicit ? 'inline-block' : 'none';
+    document.getElementById('modal-explicit').style.display = track.explicit ? 'inline-block' : 'none';
 
     const albumNameElement = document.getElementById('modal-album-name');
     albumNameElement.textContent = track.album.name;
     albumNameElement.onclick = () => showAlbumDetails(track.album, track.artists);
 
-    modal.style.display = 'block';
+    openModal(modal);
 }
 
 function showAlbumDetails(album, trackArtists) {
-    document.getElementById('track-modal').style.display = 'none';
+    closeModal(document.getElementById('track-modal'));
 
     const modal = document.getElementById('album-modal');
+    const albumArt = document.getElementById('modal-album-only-art');
 
-    document.getElementById('modal-album-only-art').src = album.images[0].url;
+    albumArt.src = album.images[0].url;
+    albumArt.alt = `${album.name} album cover`;
     document.getElementById('modal-album-only-name').textContent = album.name;
     document.getElementById('modal-album-only-type').textContent = album.album_type;
     document.getElementById('modal-album-only-tracks').textContent = album.total_tracks;
     document.getElementById('modal-album-only-release-date').textContent = formatDate(album.release_date);
 
-    const artistsToUse = album.artists || trackArtists;
-    renderClickableArtists(artistsToUse, 'modal-album-only-artist', 'album-modal');
+    renderClickableArtists(album.artists || trackArtists, 'modal-album-only-artist', 'album-modal');
 
     document.getElementById('modal-album-only-uri').href = album.uri;
-    modal.style.display = 'block';
+    openModal(modal);
 }
 
-let previousModalForArtist = null;
-
 async function showArtistDetails(artistId, fromModalId = null) {
+    const activeToken = token;
+    const activeRequestVersion = requestVersion;
     previousModalForArtist = fromModalId;
-
-    document.getElementById('track-modal').style.display = 'none';
-    document.getElementById('album-modal').style.display = 'none';
+    closeModal(document.getElementById('track-modal'));
+    closeModal(document.getElementById('album-modal'));
 
     try {
         const artist = await getArtist(artistId);
+        if (!token || token !== activeToken || requestVersion !== activeRequestVersion) {
+            return;
+        }
+
         const modal = document.getElementById('artist-modal');
         const imageElement = document.getElementById('modal-artist-art');
 
         imageElement.src = artist.images.length > 0
             ? artist.images[0].url
             : 'https://via.placeholder.com/160?text=No+Image';
+        imageElement.alt = artist.images.length > 0 ? `${artist.name} profile` : '';
 
         document.getElementById('modal-artist-name-title').textContent = artist.name;
 
@@ -362,11 +556,14 @@ async function showArtistDetails(artistId, fromModalId = null) {
         }
 
         document.getElementById('modal-artist-uri').href = artist.uri;
-        document.getElementById('back-to-prev-btn').style.display = fromModalId ? 'inline' : 'none';
-        modal.style.display = 'block';
+        document.getElementById('back-to-prev-btn').hidden = !fromModalId;
+        openModal(modal);
     } catch (error) {
+        if (requestVersion !== activeRequestVersion) {
+            return;
+        }
         console.error('Failed to load artist details:', error);
-        showDashboardMessage(error.message, true);
+        showAppError(error);
     }
 }
 
@@ -375,11 +572,12 @@ function renderClickableArtists(artists, targetElementId, currentModalId) {
     container.replaceChildren();
 
     artists.forEach((artist, index) => {
-        const artistElement = document.createElement('span');
-        artistElement.textContent = artist.name;
-        artistElement.className = 'clickable-artist';
-        artistElement.addEventListener('click', () => showArtistDetails(artist.id, currentModalId));
-        container.appendChild(artistElement);
+        const artistButton = document.createElement('button');
+        artistButton.type = 'button';
+        artistButton.className = 'artist-link';
+        artistButton.textContent = artist.name;
+        artistButton.addEventListener('click', () => showArtistDetails(artist.id, currentModalId));
+        container.appendChild(artistButton);
 
         if (index < artists.length - 1) {
             container.appendChild(document.createTextNode(', '));
@@ -388,75 +586,89 @@ function renderClickableArtists(artists, targetElementId, currentModalId) {
 }
 
 //===================================================================
-// 5. Event Listeners
+// 5. Event Listeners & Initialization
 //===================================================================
 
 document.querySelectorAll('.close-button').forEach(button => {
-    button.addEventListener('click', () => {
-        button.closest('.modal').style.display = 'none';
+    button.addEventListener('click', () => closeModal(button.closest('.modal')));
+});
+
+document.querySelectorAll('.modal').forEach(modal => {
+    modal.addEventListener('click', event => {
+        if (event.target === modal) {
+            closeModal(modal);
+        }
     });
 });
 
 document.getElementById('back-to-track-btn').addEventListener('click', () => {
-    document.getElementById('album-modal').style.display = 'none';
-    document.getElementById('track-modal').style.display = 'block';
+    closeModal(document.getElementById('album-modal'));
+    openModal(document.getElementById('track-modal'));
 });
 
 document.getElementById('back-to-prev-btn').addEventListener('click', () => {
-    document.getElementById('artist-modal').style.display = 'none';
-    if (previousModalForArtist) {
-        document.getElementById(previousModalForArtist).style.display = 'block';
+    closeModal(document.getElementById('artist-modal'));
+    if (previousModalForArtist && token) {
+        openModal(document.getElementById(previousModalForArtist));
     }
 });
 
-const infoButton = document.getElementById('info-btn');
-const disclaimerPopup = document.getElementById('disclaimer');
+function setInfoPopupOpen(isOpen) {
+    elements.infoPopup.hidden = !isOpen;
+    elements.infoButton.setAttribute('aria-expanded', String(isOpen));
+}
 
-infoButton.addEventListener('click', () => {
-    disclaimerPopup.style.display = disclaimerPopup.style.display === 'block' ? 'none' : 'block';
+elements.infoButton.addEventListener('click', () => {
+    setInfoPopupOpen(elements.infoPopup.hidden);
 });
 
 window.addEventListener('click', event => {
-    if (event.target.classList.contains('modal')) {
-        event.target.style.display = 'none';
-    }
-
-    if (event.target !== infoButton && !disclaimerPopup.contains(event.target)) {
-        disclaimerPopup.style.display = 'none';
+    if (!elements.infoPopup.hidden
+        && event.target !== elements.infoButton
+        && !elements.infoPopup.contains(event.target)) {
+        setInfoPopupOpen(false);
     }
 });
 
-document.getElementById('connect-spotify-btn').addEventListener('click', async () => {
+window.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !elements.infoPopup.hidden) {
+        setInfoPopupOpen(false);
+        elements.infoButton.focus();
+    }
+});
+
+elements.connectButton.addEventListener('click', async () => {
+    setAppState('connecting');
     try {
         await startSpotifyAuthorization();
     } catch (error) {
         console.error('Failed to start Spotify authorization:', error);
-        showDashboardMessage(error.message, true);
+        showAppError(new AppError('authorization', 'Could not start Spotify authorization. Try again.'));
     }
 });
 
-document.getElementById('time-range-select').addEventListener('change', event => {
-    displayAllData(event.target.value);
-});
-
-//===================================================================
-// 6. Initialization
-//===================================================================
+elements.disconnectButton.addEventListener('click', disconnectSpotify);
+elements.retryButton.addEventListener('click', () => displayAllData(elements.timeRangeSelect.value));
+elements.timeRangeSelect.addEventListener('change', event => displayAllData(event.target.value));
 
 async function initializeApp() {
+    if (hasOAuthResponse()) {
+        setAppState('connecting');
+    }
+
     try {
         const completedAuthorization = await handleOAuthCallback();
         if (completedAuthorization) {
-            await displayAllData(document.getElementById('time-range-select').value);
+            await displayAllData(elements.timeRangeSelect.value);
             return;
         }
     } catch (error) {
         console.error('Spotify authorization error:', error);
-        showDashboardMessage(error.message, true);
+        showAppError(error);
         return;
     }
 
-    showDashboardMessage('Connect Spotify to see your data.');
+    setAppState('disconnected');
 }
 
 initializeApp();
