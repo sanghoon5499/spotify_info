@@ -138,6 +138,11 @@ li:hover {
     font-size: 0.95rem;
 }
 
+.error-text {
+    color: #ef4444 !important;
+    font-weight: 500;
+}
+
 .spotify-link-btn {
     display: block;
     background-color: var(--accent-color);
@@ -212,9 +217,9 @@ li:hover {
 }
 
 /*-------------------
-  6. API Key Input & Buttons
+  6. Connect Button
 -------------------*/
-.token-button, .submit-button {
+.connect-button {
     background-color: var(--accent-color);
     color: #fff;
     border: none;
@@ -226,28 +231,8 @@ li:hover {
     transition: background-color 0.2s ease;
 }
 
-.token-button:hover, .submit-button:hover {
+.connect-button:hover {
     background-color: var(--accent-hover);
-}
-
-.token-form {
-    display: flex;
-    gap: 8px;
-}
-
-#token-input {
-    background-color: var(--item-bg);
-    color: var(--text-main);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 10px 16px;
-    font-size: 0.95rem;
-    width: 250px;
-}
-
-#token-input:focus {
-    outline: none;
-    border-color: var(--accent-color);
 }
 
 /*-------------------
@@ -270,25 +255,6 @@ li:hover {
 }
 
 .info-button:hover {
-    background-color: var(--item-hover);
-    color: var(--text-main);
-}
-
-.dev-link-btn {
-    background-color: var(--item-bg);
-    color: var(--text-main);
-    border: 1px solid var(--border-color);
-    padding: 10px 14px;
-    border-radius: 6px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    transition: all 0.2s ease;
-}
-
-.dev-link-btn:hover {
     background-color: var(--item-hover);
     color: var(--text-main);
 }
