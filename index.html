@@ -26,17 +26,10 @@
             </div>
             
             <div class="header-actions">
-                <div class="token-input-container">
-                    <button id="token-input-btn" class="token-button">Set API Key</button>
-                    <div class="token-form">
-                        <a href="https://developer.spotify.com/dashboard" target="_blank" class="dev-link-btn" title="Open Spotify Developer Dashboard">Get Key</a>
-                        <input type="text" id="token-input" placeholder="Paste your API key here">
-                        <button id="token-submit-btn" class="submit-button">Save</button>
-                    </div>
-                </div>
+                <button id="connect-spotify-btn" class="connect-button">Connect Spotify</button>
                 <button id="info-btn" class="info-button">?</button>
                 <div id="disclaimer" class="disclaimer-note-popup">
-                    <p><strong>Note:</strong> This is a local-only tool. Your data and API key are not being uploaded or saved anywhere.</p>
+                    <p><strong>Note:</strong> Spotify access is kept in this browser tab and is not saved.</p>
                 </div>
             </div>
         </div>
@@ -100,7 +93,6 @@
             <img id="modal-artist-art" src="" alt="Artist Profile">
             <div class="modal-text-content">
                 <h2 id="modal-artist-name-title"></h2>
-                <p><strong>Followers:</strong> <span id="modal-artist-followers"></span></p>
                 <div id="modal-artist-genres" class="genre-container"></div>
                 <a id="modal-artist-uri" href="#" class="spotify-link-btn">Open Artist in Spotify</a>
             </div>
